@@ -538,6 +538,7 @@ class TypeScriptParser(LanguageParser):
                     name=constructor_node.text.decode(),
                     line=line,
                     arguments=arguments,
+                    is_new=True,
                 )
             )
         elif constructor_node.type == "member_expression":
@@ -551,6 +552,7 @@ class TypeScriptParser(LanguageParser):
                         line=line,
                         receiver=receiver,
                         arguments=arguments,
+                        is_new=True,
                     )
                 )
 

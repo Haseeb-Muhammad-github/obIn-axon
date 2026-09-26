@@ -348,6 +348,8 @@ def resolve_file_calls(
     import_cache = _build_import_cache(fpd.file_path, graph)
 
     for call in fpd.parse_result.calls:
+        if getattr(call, "is_new", False):
+            continue
         if call.name in _CALL_BLOCKLIST and call.receiver not in ("self", "this"):
             continue
 
