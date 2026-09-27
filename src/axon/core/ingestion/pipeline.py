@@ -38,6 +38,7 @@ from axon.core.ingestion.coupling import resolve_coupling
 from axon.core.ingestion.dead_code import process_dead_code
 from axon.core.ingestion.heritage import process_heritage
 from axon.core.ingestion.imports import build_file_index, process_imports
+from axon.core.ingestion.instantiations import process_instantiations
 from axon.core.ingestion.parser_phase import process_parsing
 from axon.core.ingestion.processes import process_processes
 from axon.core.ingestion.resolved import ResolvedEdge
@@ -195,7 +196,7 @@ def run_pipeline(
                 heritage_name_index[name] = filtered
 
     with _timed("Resolving relationships"):
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             calls_f = pool.submit(
                 process_calls, parse_data, graph,
                 name_index=shared_name_index, parallel=False, collect=True,
@@ -206,6 +207,10 @@ def run_pipeline(
             )
             types_f = pool.submit(
                 process_types, parse_data, graph,
+                name_index=shared_name_index, parallel=False, collect=True,
+            )
+            instantiations_f = pool.submit(
+                process_instantiations, parse_data, graph,
                 name_index=shared_name_index, parallel=False, collect=True,
             )
 
@@ -219,6 +224,7 @@ def run_pipeline(
                 node.properties[patch.key] = patch.value
 
         _write_collected_edges(types_f.result() or [], graph)
+        _write_collected_edges(instantiations_f.result() or [], graph)
 
     coupling_file_nodes = graph.get_nodes_by_label(NodeLabel.FILE)
 
@@ -334,6 +340,7 @@ def reindex_files(
     process_calls(parse_data, graph, name_index=shared_name_index)
     process_heritage(parse_data, graph, name_index=heritage_name_index)
     process_types(parse_data, graph, name_index=shared_name_index)
+    process_instantiations(parse_data, graph, name_index=shared_name_index)
 
     incremental_nodes = [
         node for node in graph.iter_nodes()
