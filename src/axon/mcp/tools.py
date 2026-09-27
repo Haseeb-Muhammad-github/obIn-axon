@@ -1158,3 +1158,88 @@ def handle_test_impact(
                     lines.append(f"    - {test_name} (transitive via: {source_sym})")
 
     return "\n".join(lines)
+
+
+def handle_object_flow(storage: StorageBackend, class_name: str) -> str:
+    """Find all locations where a given class is instantiated.
+
+    Queries the graph for INSTANTIATES edges whose target is a CLASS node
+    with the given name, and returns a formatted report of every callsite.
+
+    Args:
+        storage: The storage backend to query.
+        class_name: Name of the class to look up (case-sensitive).
+
+    Returns:
+        A formatted string listing each instantiation site, or an
+        informational message when the class is unknown or has no
+        instantiation edges.
+    """
+    if not class_name or not class_name.strip():
+        return "Error: 'class_name' parameter is required and cannot be empty."
+
+    class_name = class_name.strip()
+    escaped = _escape_cypher(class_name)
+
+    # Find all Class nodes with this name.
+    class_rows = storage.execute_raw(
+        f"MATCH (c:Class) WHERE c.name = '{escaped}' "
+        f"RETURN c.id, c.file_path"
+    ) or []
+
+    if not class_rows:
+        return f"Class '{class_name}' not found in the graph."
+
+    # For each Class node, find inbound INSTANTIATES edges and the source node.
+    results: list[dict] = []
+    for class_row in class_rows:
+        class_node_id: str = class_row[0] or ""
+        class_file: str = class_row[1] or ""
+        if not class_node_id:
+            continue
+
+        escaped_id = _escape_cypher(class_node_id)
+        # NOTE: The CodeRelation schema has no 'line' column.  The line number
+        # was stored in rel.properties["line"] but is not mapped to a dedicated
+        # column, so we use the source node's start_line as the call-site line.
+        edge_rows = storage.execute_raw(
+            f"MATCH (src)-[r:CodeRelation]->(tgt) "
+            f"WHERE tgt.id = '{escaped_id}' AND r.rel_type = 'instantiates' "
+            f"RETURN src.file_path, src.start_line, src.name, src.id"
+        ) or []
+
+        for row in edge_rows:
+            src_file: str = row[0] or ""
+            line: int = int(row[1]) if row[1] is not None else 0
+            src_name: str = row[2] or ""
+            results.append(
+                {
+                    "instantiated_in": src_file,
+                    "line": line,
+                    "class_defined_in": class_file,
+                    "instantiated_by": src_name,
+                }
+            )
+
+    if not results:
+        return (
+            f"Class '{class_name}' exists but has no recorded instantiation sites.\n"
+            f"Defined in: {', '.join(r[1] for r in class_rows if r[1])}"
+        )
+
+    results.sort(key=lambda r: (r["instantiated_in"], r["line"]))
+
+    defined_in = ", ".join(sorted({r[1] for r in class_rows if r[1]}))
+    lines = [
+        f"Object flow for: {class_name}",
+        f"Defined in:      {defined_in}",
+        f"Instantiated at: {len(results)} site(s)",
+        "=" * 48,
+        "",
+    ]
+    for i, r in enumerate(results, 1):
+        loc = f"{r['instantiated_in']}:{r['line']}" if r["line"] else r["instantiated_in"]
+        container = f" (in {r['instantiated_by']})" if r["instantiated_by"] else ""
+        lines.append(f"  {i}. {loc}{container}")
+
+    return "\n".join(lines)

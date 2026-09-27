@@ -1,6 +1,6 @@
 """MCP server for Axon — exposes code intelligence tools over stdio and HTTP.
 
-Registers fifteen tools and three resources that give AI agents and MCP clients
+Registers sixteen tools and three resources that give AI agents and MCP clients
 access to the Axon knowledge graph.  The server lazily initialises a
 :class:`KuzuBackend` from the ``.axon/kuzu`` directory in the current
 working directory.
@@ -45,6 +45,7 @@ from axon.mcp.tools import (
     handle_file_context,
     handle_impact,
     handle_list_repos,
+    handle_object_flow,
     handle_query,
     handle_review_risk,
     handle_test_impact,
@@ -384,6 +385,24 @@ TOOLS: list[Tool] = [
             },
         },
     ),
+    Tool(
+        name="axon_object_flow",
+        description=(
+            "Find all files and locations where a given class is instantiated. "
+            "Returns each callsite with file path, line number, and the enclosing "
+            "symbol that performs the instantiation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "class_name": {
+                    "type": "string",
+                    "description": "Name of the class to look up (case-sensitive).",
+                },
+            },
+            "required": ["class_name"],
+        },
+    ),
 ]
 
 @server.list_tools()
@@ -436,6 +455,8 @@ def _dispatch_tool(name: str, arguments: dict, storage: KuzuBackend) -> str:
         return handle_cycles(
             storage, min_size=arguments.get("min_size", 2),
         )
+    elif name == "axon_object_flow":
+        return handle_object_flow(storage, arguments.get("class_name", ""))
     else:
         return f"Unknown tool: {name}"
 
