@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "axon-fork": {
+    "axon": {
       "command": "/home/haseeb/my_env/bin/axon",
       "args": ["mcp"],
       "cwd": "/home/haseeb/Documents/IBM Hackathone/obIn-axon",
